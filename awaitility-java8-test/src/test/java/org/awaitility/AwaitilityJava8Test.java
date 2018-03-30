@@ -223,7 +223,7 @@ public class AwaitilityJava8Test {
                 assertTrue(counter.get() >= 2);
                 return true;
             });
-            fail("Expecting error");
+            throw new RuntimeException("this point should not be reachable expecting error");
         } catch (AssertionError ignored) {
             // expected
         }
@@ -249,7 +249,7 @@ public class AwaitilityJava8Test {
                 throw new RuntimeException(e);
             }
             fakeRepositoryList.add("hello");
-        });
+        }).start();
             
         // When
         given().pollDelay(10, MILLISECONDS).await().atMost(50, MILLISECONDS).until(fakeRepositoryList::state, hasItem(endsWith("hello")));

@@ -77,9 +77,8 @@ public class FieldSupplierBuilder {
             foundField = WhiteboxImpl.getFieldAnnotatedWith(object, expectedAnnotation);
             if (!foundField.getType().isAssignableFrom(expectedFieldType)) {
                 throw new FieldNotFoundException(String.format(
-                        "Couldn't find a field of type %s annotated with %s in %s.", expectedFieldType.getClass()
-                                .getName(), expectedAnnotation.getClass().getName(), WhiteboxImpl.getType(object)
-                                .getName()
+                  "Couldn't find a field of type %s annotated with %s in %s.", expectedFieldType.getName(),
+                  expectedAnnotation.getName(), WhiteboxImpl.getType(object).getName()
                 ));
             }
         }
@@ -168,7 +167,7 @@ public class FieldSupplierBuilder {
             if (!field.getName().equals(expectedFieldName)) {
                 throw new FieldNotFoundException(String.format(
                         "Couldn't find a field with name %s annotated with %s in %s.", expectedFieldName,
-                        annotationType.getClass().getName(), WhiteboxImpl.getType(object).getName()));
+                        annotationType.getName(), WhiteboxImpl.getType(object).getName()));
             }
             expectedAnnotation = annotationType;
             return this;

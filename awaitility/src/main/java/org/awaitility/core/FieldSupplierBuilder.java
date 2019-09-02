@@ -93,15 +93,13 @@ public class FieldSupplierBuilder {
          * @param fieldName The name of the field
          * @return The supplier
          */
+        @SuppressWarnings("unchecked")
         public Callable<T> andWithName(final String fieldName) {
             assertNotNullParameter(fieldName, "fieldName");
-            return new Callable<T>() {
-                public T call() throws Exception {
-                    return (T) WhiteboxImpl.getByNameAndType(object, fieldName, expectedFieldType);
-                }
-            };
+            return () -> (T) WhiteboxImpl.getByNameAndType(object, fieldName, expectedFieldType);
         }
 
+        @SuppressWarnings("unchecked")
         public T call() throws Exception {
             return (T) (foundField == null ? WhiteboxImpl.getInternalState(object, expectedFieldType) : foundField
                     .get(object));
@@ -173,7 +171,8 @@ public class FieldSupplierBuilder {
             return this;
         }
 
-        public T call() throws Exception {
+        @SuppressWarnings("unchecked")
+        public T call() {
             return (T) WhiteboxImpl.getByNameAndType(object, expectedFieldName, expectedFieldType);
         }
     }
@@ -212,7 +211,7 @@ public class FieldSupplierBuilder {
             return new NameAndAnnotationFieldSupplier<S>();
         }
 
-        @SuppressWarnings("rawtypes")
+        @SuppressWarnings({"rawtypes", "unchecked"})
         public T call() throws Exception {
             return (T) WhiteboxImpl.getFieldAnnotatedWith(object, expectedAnnotation).get(object);
         }

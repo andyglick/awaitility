@@ -1,3 +1,106 @@
+Changelog next version
+----------------------
+* Removed the dependency to objenesis since it's no longer required after requiring Java 8+
+
+Changelog 4.0.0 (2019-08-30)
+---------------------------
+* Added support for Adder's. For example: await().untilAdder(myLongAdder, equalTo(5L))
+* Added support for Accumulators's. For example: await().untilAccumulator(myLongAccumulator, equalTo(5L))
+* Better handling of InterruptedException for Future's by using code from Guava (code from Uninterruptibles)
+* Shutting down cleanup ExecutorService in an uninterruptible fashion
+* Upgraded Kotlin extension to use Kotlin 1.3.50 (instead of 1.3.41)
+
+Changelog 4.0.0-rc1 (2019-07-15)
+--------------------------------
+* Upgraded Kotlin extension to use Kotlin 1.3.41 (instead of 1.3.11)
+* Better handling of InterruptedException using code from Guava (Uninterruptibles#sleepUninterruptibly) (issue 134)
+* Added org.awaitility.core.ConditionEvaluationLogger#conditionEvaluationLogger() methods. This is only useful for syntactic sugar to avoid having to write the "new" keyword in Java when using a ConditionEvaluationLogger. For example:
+    await().with().conditionEvaluationListener(conditionEvaluationLogger()). ..
+* Awaitility now requires Java 8+ (i.e. support for Java 6 and Java 7 is dropped).
+* Hamcrest is update from version 1.3 to 2.1.
+* Awaitility now requires Java 8
+* Scala version is updated from 2.11.8 to 2.13.0
+* Upgraded Groovy from 2.4.11 to 2.5.7
+* Removed the awaitility-proxy module since it's no longer required when using Java 8+.
+* Removed the org.awaitility.core.Predicate interface, use java.util.function.Predicate instead.
+* Removed the org.awaitility.core.BiFunction interface, use java.util.function.BiFunction instead.
+* Removed the org.awaitility.core.Supplier interface, use java.util.function.Supplier instead.
+* Replaced IllegalStateException with IllegalArgumentException when constructing erroneous ConditionSettings
+* Removed org.awaitility.Duration, use java.time.Duration instead. Constants such as ONE_SECOND, TWO_HUNDRED_MILLISECONDS have been moved to org.awaitility.Durations.
+
+Changelog 3.1.6 (2019-01-25)
+----------------------------
+* The Kotlin extension function called "has" is now null safe
+* The Kotlin extension function called "has" now accepts non-null types
+* Upgraded Kotlin extension to use Kotlin 1.3.11 (instead of 1.2.50)
+
+Changelog 3.1.5 (2018-12-06)
+----------------------------
+* Added a new Kotlin extension function called "has" that allows writing succinct expressions when testing for properties in e.g. data classes. For example:
+
+  val data = await untilCallTo { fakeObjectRepository.data } has {
+       state == "Hello"
+  }
+
+  where "data" is defined as:
+
+  data class Data(var state: String)
+
+  I.e. inside the scope of "has" the "Data" instance is used as "this" (see [here](https://kotlinlang.org/docs/reference/lambdas.html#function-literals-with-receiver) for more info).
+  This is the same as doing:
+
+  await untilCallTo { fakeObjectRepository.data } matches { data ->
+      data?.state == "Hello"
+  }
+* Improved error message for "untilNotNull" Kotlin extension function
+* Added "untilNull" extension function to the Kotlin DSL: await untilNull { myDataRepository.findById("id") }
+
+Changelog 3.1.4 (2018-12-05)
+----------------------------
+* Added "untilNotNull" extension function to the Kotlin DSL: val data = await untilNotNull { myDataRepository.findById("id") }
+
+Changelog 3.1.3 (2018-11-16)
+----------------------------
+* Last exception is included in hierarchy even if ignoreExceptions is set (issue 121) (thanks to Bryn Cooke for pull request)
+* Removed the use of java.beans.Introspector for de-capitalization of String's since it doesn't work on Android (issue 125)
+
+Changelog 3.1.2 (2018-07-24)
+----------------------------
+* Added "alias" method to awaitility which allows one to set the alias using a more english-like DSL:
+    await().with().alias("my alias"). ..
+* Added several new Kotlin extension methods. For example you can now do:
+
+    await withPollInterval ONE_HUNDRED_MILLISECONDS ignoreException IllegalArgumentException::class untilAsserted  {
+        assertThat(fakeRepository.value).isEqualTo(1)
+    }
+
+  or:
+
+     await withAlias "Kotlin Test" ignoreExceptionsInstanceOf
+            IllegalArgumentException::class withPollDelay ONE_HUNDRED_MILLISECONDS withPollInterval
+            fibonacci().with().offset(1).and().unit(MILLISECONDS) atLeast TWO_HUNDRED_MILLISECONDS atMost
+            ONE_MINUTE untilCallTo { fakeRepository.value } matches { it == 1 }
+
+  All extension functions can be imported from the "org.awaitility.kotlin" package (e.g. 'import org.awaitility.kotlin.*')
+
+Changelog 3.1.1 (2018-06-29)
+----------------------------
+* Hamcrest condition evaluation should be safer if called from multiple threads
+* Fixed bug where error message showed in Hamcrest condition could be the same as the expected value when conditional evaluation time exceeded at most time (issue 109).
+* Added org.awaitility.core.ConditionFactory.until(java.util.concurrent.Callable<T>, org.awaitility.core.Predicate<? super T>) that allows you to use a predicate to evaluate a condition like this:
+    await().until(myRepository::count, cnt -> cnt == 2);
+* Added Kotlin module. In maven add:
+
+    <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility-kotlin</artifactId>
+            <version>3.1.1</version>
+    </dependency>
+
+  This module adds an extension function called "untilCallTo" (in org.awaitility.kotlin.AwaitilityKt) that allows you to write conditions as:
+
+     await().untilCallTo { fakeRepository.value } matches { it == 1 }
+
 Changelog 3.1.0 (2018-03-02)
 ----------------------------
 * Bumped all identified out of data properties, some of which applied to dependencies, and bumped all plugin versions, tests are all passing (thanks to Andy Glick for pull request)
@@ -34,7 +137,7 @@ Changelog 3.0.0-rc3 (2017-04-07)
   This is backward incompatible only if you've supplied an explicit instance of Runnable to the function. If using Java 8 lambda expressions then nothing should change.
 * Removed org.awaitility.Awaitility#matches method since it's no longer needed
 
-Changelog 3.0.0-rc2 (2017-03-31)
+Changelog 3.0.0-rc1 (2017-03-31)
 --------------------------------
 * Updated ByteBuddy to version 1.6.11
 * Downgraded Scala version to 2.11.8 again since 2.12.x requires Java 8
@@ -118,7 +221,7 @@ Changelog 1.7.0 (2015-11-27)
   this will generate a poll interval of 1, 1, 2, 3, 5, 8, 13, .. . Note that Duration.ZERO is used as start value for all non-fixed poll intervals
   (for fixed poll intervals the poll delay is equal to the duration of the FixedPollInterval for backward compatible reasons). (issue 36)
 * Improvement to Duration (com.jayway.awaitility.Duration). You can invoke make use of the new methods plus, minus, multiply, divide. For example:
-    new Duration(5, SECONDS).plus(17, MILLISECONDS); // Will return a new Duration of 5017 milliseconds.
+    Duration.of(5, SECONDS).plus(17, MILLISECONDS); // Will return a Duration.of( of 5017 milliseconds.
 * Added Duration.ONE_MILLISECOND
 * Added ability to wait for Runnable (void) conditions that declares check exceptions. For example if we have the following method:
     public void something() throws Exception { ... }

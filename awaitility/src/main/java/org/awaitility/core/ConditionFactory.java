@@ -15,25 +15,25 @@
  */
 package org.awaitility.core;
 
-import org.awaitility.Duration;
 import org.awaitility.constraint.AtMostWaitConstraint;
 import org.awaitility.constraint.WaitConstraint;
 import org.awaitility.pollinterval.FixedPollInterval;
 import org.awaitility.pollinterval.PollInterval;
-import org.awaitility.spi.ProxyConditionFactory;
+import org.hamcrest.Description;
 import org.hamcrest.Matcher;
+import org.hamcrest.TypeSafeMatcher;
 
-import java.util.Iterator;
+import java.time.Duration;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.*;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
-import static org.awaitility.classpath.ClassPathResolver.existInCP;
+import static org.awaitility.core.ForeverDuration.isForever;
+import static org.awaitility.core.TemporalDuration.formatAsString;
 import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.is;
 
@@ -148,6 +148,18 @@ public class ConditionFactory {
     }
 
     /**
+     * Set the alias
+     *
+     * @param alias alias
+     * @return the condition factory
+     * @see org.awaitility.Awaitility#await(String)
+     */
+    public ConditionFactory alias(String alias) {
+        return new ConditionFactory(alias, timeoutConstraint, pollInterval, pollDelay,
+                catchUncaughtExceptions, exceptionsIgnorer, conditionEvaluationListener, executorLifecycle);
+    }
+
+    /**
      * Condition has to be evaluated not earlier than <code>timeout</code> before throwing a timeout exception.
      *
      * @param timeout the timeout
@@ -166,7 +178,7 @@ public class ConditionFactory {
      * @return the condition factory
      */
     public ConditionFactory atLeast(long timeout, TimeUnit unit) {
-        return atLeast(new Duration(timeout, unit));
+        return atLeast(DurationFactory.of(timeout, unit));
     }
 
     /**
@@ -190,7 +202,7 @@ public class ConditionFactory {
      * @return the condition factory
      */
     public ConditionFactory between(long atLeastDuration, TimeUnit atLeastTimeUnit, long atMostDuration, TimeUnit atMostTimeUnit) {
-        return between(new Duration(atLeastDuration, atLeastTimeUnit), new Duration(atMostDuration, atMostTimeUnit));
+        return between(DurationFactory.of(atLeastDuration, atLeastTimeUnit), DurationFactory.of(atMostDuration, atMostTimeUnit));
     }
 
     /**
@@ -213,7 +225,7 @@ public class ConditionFactory {
      * Note that the poll delay will be automatically set as to the same value
      * as the interval (if using a {@link FixedPollInterval}) unless it's specified explicitly using
      * {@link #pollDelay(Duration)}, {@link #pollDelay(long, TimeUnit)} or
-     * {@link org.awaitility.core.ConditionFactory#pollDelay(org.awaitility.Duration)}.
+     * {@link org.awaitility.core.ConditionFactory#pollDelay(java.time.Duration)}.
      * </p>
      *
      * @param pollInterval the poll interval
@@ -245,7 +257,7 @@ public class ConditionFactory {
      * @return the condition factory
      */
     public ConditionFactory pollDelay(long delay, TimeUnit unit) {
-        return new ConditionFactory(alias, timeoutConstraint, pollInterval, new Duration(delay, unit),
+        return new ConditionFactory(alias, timeoutConstraint, pollInterval, DurationFactory.of(delay, unit),
                 catchUncaughtExceptions, exceptionsIgnorer, conditionEvaluationListener, executorLifecycle);
     }
 
@@ -273,7 +285,7 @@ public class ConditionFactory {
      * @return the condition factory
      */
     public ConditionFactory atMost(long timeout, TimeUnit unit) {
-        return atMost(new Duration(timeout, unit));
+        return atMost(DurationFactory.of(timeout, unit));
     }
 
     /**
@@ -284,7 +296,7 @@ public class ConditionFactory {
      * Note that the poll delay will be automatically set as to the same value
      * as the interval unless it's specified explicitly using
      * {@link #pollDelay(Duration)}, {@link #pollDelay(long, TimeUnit)} or
-     * {@link org.awaitility.core.ConditionFactory#pollDelay(org.awaitility.Duration)} , or
+     * {@link org.awaitility.core.ConditionFactory#pollDelay(java.time.Duration)} , or
      * ConditionFactory#andWithPollDelay(long, TimeUnit)}. This is the same as creating a {@link FixedPollInterval}.
      *
      * @param pollInterval the poll interval
@@ -293,7 +305,7 @@ public class ConditionFactory {
      * @see FixedPollInterval
      */
     public ConditionFactory pollInterval(long pollInterval, TimeUnit unit) {
-        PollInterval fixedPollInterval = new FixedPollInterval(new Duration(pollInterval, unit));
+        PollInterval fixedPollInterval = new FixedPollInterval(DurationFactory.of(pollInterval, unit));
         return new ConditionFactory(alias, timeoutConstraint, fixedPollInterval, definePollDelay(pollDelay, fixedPollInterval),
                 catchUncaughtExceptions, exceptionsIgnorer, conditionEvaluationListener, executorLifecycle);
     }
@@ -331,11 +343,7 @@ public class ConditionFactory {
             throw new IllegalArgumentException("exceptionType cannot be null");
         }
         return new ConditionFactory(alias, timeoutConstraint, pollInterval, pollDelay, catchUncaughtExceptions,
-                new PredicateExceptionIgnorer(new Predicate<Throwable>() {
-                    public boolean matches(Throwable e) {
-                        return exceptionType.isAssignableFrom(e.getClass());
-                    }
-                }),
+                new PredicateExceptionIgnorer(e -> exceptionType.isAssignableFrom(e.getClass())),
                 conditionEvaluationListener, executorLifecycle);
     }
 
@@ -353,11 +361,7 @@ public class ConditionFactory {
             throw new IllegalArgumentException("exception cannot be null");
         }
         return new ConditionFactory(alias, timeoutConstraint, pollInterval, pollDelay, catchUncaughtExceptions,
-                new PredicateExceptionIgnorer(new Predicate<Throwable>() {
-                    public boolean matches(Throwable e) {
-                        return e.getClass().equals(exceptionType);
-                    }
-                }),
+                new PredicateExceptionIgnorer(e -> e.getClass().equals(exceptionType)),
                 conditionEvaluationListener, executorLifecycle);
     }
 
@@ -370,11 +374,7 @@ public class ConditionFactory {
      * @return the condition factory.
      */
     public ConditionFactory ignoreExceptions() {
-        return ignoreExceptionsMatching(new Predicate<Throwable>() {
-            public boolean matches(Throwable e) {
-                return true;
-            }
-        });
+        return ignoreExceptionsMatching(e -> true);
     }
 
     /**
@@ -385,11 +385,7 @@ public class ConditionFactory {
      * @return the condition factory.
      */
     public ConditionFactory ignoreNoExceptions() {
-        return ignoreExceptionsMatching(new Predicate<Throwable>() {
-            public boolean matches(Throwable e) {
-                return false;
-            }
-        });
+        return ignoreExceptionsMatching(e -> false);
     }
 
     /**
@@ -502,7 +498,7 @@ public class ConditionFactory {
      * @return the condition factory
      */
     public ConditionFactory pollExecutorService(ExecutorService executorService) {
-        if (executorService != null && executorService instanceof ScheduledExecutorService) {
+        if (executorService instanceof ScheduledExecutorService) {
             throw new IllegalArgumentException("Poll executor service cannot be an instance of " + ScheduledExecutorService.class.getName());
         }
         return new ConditionFactory(alias, timeoutConstraint, pollInterval, pollDelay, false,
@@ -519,12 +515,7 @@ public class ConditionFactory {
      */
     public ConditionFactory pollThread(final Function<Runnable, Thread> threadSupplier) {
         return new ConditionFactory(alias, timeoutConstraint, pollInterval, pollDelay, false,
-                exceptionsIgnorer, conditionEvaluationListener, ExecutorLifecycle.withNormalCleanupBehavior(new Supplier<ExecutorService>() {
-            @Override
-            public ExecutorService get() {
-                return InternalExecutorServiceFactory.create(threadSupplier);
-            }
-        }));
+                exceptionsIgnorer, conditionEvaluationListener, ExecutorLifecycle.withNormalCleanupBehavior(() -> InternalExecutorServiceFactory.create(threadSupplier)));
     }
 
     /**
@@ -544,50 +535,7 @@ public class ConditionFactory {
      */
     public ConditionFactory pollInSameThread() {
         return new ConditionFactory(alias, timeoutConstraint, pollInterval, pollDelay, false,
-                exceptionsIgnorer, conditionEvaluationListener, ExecutorLifecycle.withNormalCleanupBehavior(new Supplier<ExecutorService>() {
-            @Override
-            public ExecutorService get() {
-                return InternalExecutorServiceFactory.sameThreadExecutorService();
-            }
-        }));
-    }
-
-    /**
-     * Specify the condition that must be met when waiting for a method call.
-     * E.g.
-     * <p>&nbsp;</p>
-     * <pre>
-     * await().untilCall(to(orderService).size(), is(greaterThan(2)));
-     * </pre>
-     *
-     * @param <T>     the generic type
-     * @param proxyMethodReturnValue  the return value of the method call
-     * @param matcher The condition that must be met when
-     * @return a T object.
-     * @throws org.awaitility.core.ConditionTimeoutException If condition was not fulfilled within the given time period.
-     */
-    public <T> T untilCall(T proxyMethodReturnValue, final Matcher<? super T> matcher) {
-        if (!existInCP("java.util.ServiceLoader")) {
-            throw new UnsupportedOperationException("java.util.ServiceLoader not found in classpath so cannot create condition");
-        }
-        ClassLoader cl = Thread.currentThread().getContextClassLoader();
-        if (cl == null) {
-            cl = ClassLoader.getSystemClassLoader();
-        }
-        Iterator<ProxyConditionFactory> iterator = java.util.ServiceLoader.load(ProxyConditionFactory.class, cl).iterator();
-        if (!iterator.hasNext()) {
-            throw new UnsupportedOperationException("There's currently no plugin installed that can handle proxy conditions, please consider adding 'awaitility-proxy' to the classpath. If using Maven you can do:" +
-                    "<dependency>\n" +
-                    "\t<groupId>org.awaitility</groupId>\n" +
-                    "\t<artifactId>awaitility</artifactId>\n" +
-                    "\t<version>${awaitility.version}</version>\n" +
-                    "</dependency>\n");
-        }
-        @SuppressWarnings("unchecked") ProxyConditionFactory<T> factory = iterator.next();
-        if (factory == null) {
-            throw new IllegalArgumentException("Internal error: Proxy condition plugin initialization returned null, please report an issue.");
-        }
-        return until(factory.createProxyCondition(proxyMethodReturnValue, matcher, generateConditionSettings()));
+                exceptionsIgnorer, conditionEvaluationListener, ExecutorLifecycle.withNormalCleanupBehavior(InternalExecutorServiceFactory::sameThreadExecutorService));
     }
 
     /**
@@ -628,7 +576,39 @@ public class ConditionFactory {
      * @throws org.awaitility.core.ConditionTimeoutException If condition was not fulfilled within the given time period.
      */
     public <T> T until(final Callable<T> supplier, final Matcher<? super T> matcher) {
-        return until(new CallableHamcrestCondition<T>(supplier, matcher, generateConditionSettings()));
+        return until(new CallableHamcrestCondition<>(supplier, matcher, generateConditionSettings()));
+    }
+
+    /**
+     * Wait until the given supplier matches the supplied predicate. For example:
+     *
+     * <pre>
+     * await().until(myRepository::count, cnt -> cnt == 2);
+     * </pre>
+     *
+     * @param supplier The supplier that returns the object that will be evaluated by the predicate.
+     * @param predicate The predicate that must match
+     * @param <T> the generic type
+     * @since 3.1.1
+     * @return a T object.
+     */
+    public <T> T until(final Callable<T> supplier, final Predicate<? super T> predicate) {
+        return until(supplier, new TypeSafeMatcher<T>() {
+            @Override
+            protected void describeMismatchSafely(T item, Description description) {
+                description.appendText("it returned <false> for input of ").appendValue(item);
+            }
+
+            @Override
+            public void describeTo(Description description) {
+                description.appendText("the predicate to return <true>");
+            }
+
+            @Override
+            protected boolean matchesSafely(T item) {
+                return predicate.test(item);
+            }
+        });
     }
 
     /**
@@ -648,7 +628,7 @@ public class ConditionFactory {
      * {@link java.lang.AssertionError} instances thrown by the supplier are treated as an assertion failure and proper error message is propagated on timeout.
      * Other exceptions are rethrown immediately as an execution errors.
      * <p>&nbsp;</p>
-     * Why technically it is completely valid to use plain Runnable class in Java 7 code, the resulting expression is very verbose and can decrease
+     * While technically it is completely valid to use plain Runnable class in Java 7 code, the resulting expression is very verbose and can decrease
      * the readability of the test case, e.g.
      * <p>&nbsp;</p>
      * <pre>
@@ -692,7 +672,7 @@ public class ConditionFactory {
      * @throws org.awaitility.core.ConditionTimeoutException If condition was not fulfilled within the given time period.
      */
     public Integer untilAtomic(final AtomicInteger atomic, final Matcher<? super Integer> matcher) {
-        return until(new CallableHamcrestCondition<Integer>(new Callable<Integer>() {
+        return until(new CallableHamcrestCondition<>(new Callable<Integer>() {
             public Integer call() {
                 return atomic.get();
             }
@@ -714,11 +694,7 @@ public class ConditionFactory {
      * @throws org.awaitility.core.ConditionTimeoutException If condition was not fulfilled within the given time period.
      */
     public Long untilAtomic(final AtomicLong atomic, final Matcher<? super Long> matcher) {
-        return until(new CallableHamcrestCondition<Long>(new Callable<Long>() {
-            public Long call() {
-                return atomic.get();
-            }
-        }, matcher, generateConditionSettings()));
+        return until(new CallableHamcrestCondition<>(atomic::get, matcher, generateConditionSettings()));
     }
 
     /**
@@ -735,11 +711,7 @@ public class ConditionFactory {
      * @throws org.awaitility.core.ConditionTimeoutException If condition was not fulfilled within the given time period.
      */
     public void untilAtomic(final AtomicBoolean atomic, final Matcher<? super Boolean> matcher) {
-        until(new CallableHamcrestCondition<Boolean>(new Callable<Boolean>() {
-            public Boolean call() {
-                return atomic.get();
-            }
-        }, matcher, generateConditionSettings()));
+        until(new CallableHamcrestCondition<>(atomic::get, matcher, generateConditionSettings()));
     }
 
     /**
@@ -763,6 +735,66 @@ public class ConditionFactory {
     }
 
     /**
+     * Await until a {@link LongAdder} has a value matching the specified {@link org.hamcrest.Matcher}. E.g.
+     * <p>&nbsp;</p>
+     * <pre>
+     * await().untilAdder(myLongAdder, is(greaterThan(2L)));
+     * </pre>
+     *
+     * @param adder  the {@link LongAdder} variable
+     * @param matcher the matcher The hamcrest matcher that checks whether the condition is fulfilled.
+     * @throws org.awaitility.core.ConditionTimeoutException If condition was not fulfilled within the given time period.
+     */
+    public void untilAdder(final LongAdder adder, final Matcher<? super Long> matcher) {
+        until(new CallableHamcrestCondition<>(adder::longValue, matcher, generateConditionSettings()));
+    }
+
+    /**
+     * Await until a {@link DoubleAdder} has a value matching the specified {@link org.hamcrest.Matcher}. E.g.
+     * <p>&nbsp;</p>
+     * <pre>
+     * await().untilAdder(myDoubleAdder, is(greaterThan(2.0d)));
+     * </pre>
+     *
+     * @param adder  the {@link DoubleAdder} variable
+     * @param matcher the matcher The hamcrest matcher that checks whether the condition is fulfilled.
+     * @throws org.awaitility.core.ConditionTimeoutException If condition was not fulfilled within the given time period.
+     */
+    public void untilAdder(final DoubleAdder adder, final Matcher<? super Double> matcher) {
+        until(new CallableHamcrestCondition<>(adder::doubleValue, matcher, generateConditionSettings()));
+    }
+
+    /**
+     * Await until a {@link LongAccumulator} has a value matching the specified {@link org.hamcrest.Matcher}. E.g.
+     * <p>&nbsp;</p>
+     * <pre>
+     * await().untilAccumulator(myLongAccumulator, is(greaterThan(2L)));
+     * </pre>
+     *
+     * @param accumulator the {@link LongAccumulator} variable
+     * @param matcher the matcher The hamcrest matcher that checks whether the condition is fulfilled.
+     * @throws org.awaitility.core.ConditionTimeoutException If condition was not fulfilled within the given time period.
+     */
+    public void untilAccumulator(final LongAccumulator accumulator, final Matcher<? super Long> matcher) {
+        until(new CallableHamcrestCondition<>(accumulator::longValue, matcher, generateConditionSettings()));
+    }
+
+    /**
+     * Await until a {@link DoubleAccumulator} has a value matching the specified {@link org.hamcrest.Matcher}. E.g.
+     * <p>&nbsp;</p>
+     * <pre>
+     * await().untilAccumulator(myDoubleAccumulator, is(greaterThan(2.0d)));
+     * </pre>
+     *
+     * @param accumulator  the {@link DoubleAccumulator} variable
+     * @param matcher the matcher The hamcrest matcher that checks whether the condition is fulfilled.
+     * @throws org.awaitility.core.ConditionTimeoutException If condition was not fulfilled within the given time period.
+     */
+    public void untilAccumulator(final DoubleAccumulator accumulator, final Matcher<? super Double> matcher) {
+        until(new CallableHamcrestCondition<>(accumulator::doubleValue, matcher, generateConditionSettings()));
+    }
+
+    /**
      * Await until a Atomic variable has a value matching the specified
      * {@link org.hamcrest.Matcher}. E.g.
      * <p>&nbsp;</p>
@@ -778,11 +810,7 @@ public class ConditionFactory {
      * @throws org.awaitility.core.ConditionTimeoutException If condition was not fulfilled within the given time period.
      */
     public <V> V untilAtomic(final AtomicReference<V> atomic, final Matcher<? super V> matcher) {
-        return until(new CallableHamcrestCondition<V>(new Callable<V>() {
-            public V call() {
-                return atomic.get();
-            }
-        }, matcher, generateConditionSettings()));
+        return until(new CallableHamcrestCondition<>(atomic::get, matcher, generateConditionSettings()));
     }
 
     /**
@@ -817,33 +845,22 @@ public class ConditionFactory {
     private ConditionSettings generateConditionSettings() {
         Duration actualPollDelay = definePollDelay(pollDelay, pollInterval);
 
-        if (actualPollDelay.isForever()) {
+        if (isForever(actualPollDelay)) {
             throw new IllegalArgumentException("Cannot delay polling forever");
         }
 
         Duration timeout = timeoutConstraint.getMaxWaitTime();
-        final long timeoutInMS = timeout.getValueInMS();
-        if (!timeout.isForever() && timeoutInMS <= actualPollDelay.getValueInMS()) {
-            throw new IllegalStateException(String.format("Timeout (%s %s) must be greater than the poll delay (%s %s).",
-                    timeout.getValue(), timeout.getTimeUnitAsString(), actualPollDelay.getValue(), actualPollDelay.getTimeUnitAsString()));
-        } else if ((!actualPollDelay.isForever() && !timeout.isForever()) && timeoutInMS <= actualPollDelay.getValueInMS()) {
-            throw new IllegalStateException(String.format("Timeout (%s %s) must be greater than the poll delay (%s %s).",
-                    timeout.getValue(), timeout.getTimeUnitAsString(), actualPollDelay.getValue(), actualPollDelay.getTimeUnitAsString()));
+        if (!isForever(timeout) && timeout.toNanos() <= actualPollDelay.toNanos()) {
+            throw new IllegalArgumentException(String.format("Timeout (%s) must be greater than the poll delay (%s).",
+                    formatAsString(timeout), formatAsString(actualPollDelay)));
+        } else if ((!isForever(actualPollDelay) && !isForever(timeout)) && timeout.toNanos() <= actualPollDelay.toNanos()) {
+            throw new IllegalArgumentException(String.format("Timeout (%s) must be greater than the poll delay (%s).",
+                    formatAsString(timeout), formatAsString(actualPollDelay)));
         }
 
         ExecutorLifecycle executorLifecycle;
         if (this.executorLifecycle == null) {
-            executorLifecycle = ExecutorLifecycle.withNormalCleanupBehavior(new Supplier<ExecutorService>() {
-                @Override
-                public ExecutorService get() {
-                    return InternalExecutorServiceFactory.create(new BiFunction<Runnable, String, Thread>() {
-                        @Override
-                        public Thread apply(Runnable r, String threadName) {
-                            return new Thread(Thread.currentThread().getThreadGroup(), r, threadName);
-                        }
-                    }, alias);
-                }
-            });
+            executorLifecycle = ExecutorLifecycle.withNormalCleanupBehavior(() -> InternalExecutorServiceFactory.create((r, threadName) -> new Thread(Thread.currentThread().getThreadGroup(), r, threadName), alias));
         } else {
             executorLifecycle = this.executorLifecycle;
         }
@@ -869,7 +886,7 @@ public class ConditionFactory {
         final Duration pollDelayToUse;
         // If a poll delay is null then a poll delay has not been explicitly defined by the user
         if (pollDelay == null) {
-            if (pollInterval != null && pollInterval instanceof FixedPollInterval) {
+            if (pollInterval instanceof FixedPollInterval) {
                 pollDelayToUse = pollInterval.next(1, Duration.ZERO); // Will return same poll delay as poll interval
             } else {
                 pollDelayToUse = Duration.ZERO; // Default poll delay for non-fixed poll intervals

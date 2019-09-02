@@ -25,7 +25,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
  */
 public class ConditionEvaluationLogger implements ConditionEvaluationListener<Object> {
 
-    private final TimeUnit timeUnit;
+    private final TimeUnit unit;
 
     /**
      * Uses {@link java.util.concurrent.TimeUnit#MILLISECONDS} as unit for elapsed and remaining time.
@@ -37,27 +37,46 @@ public class ConditionEvaluationLogger implements ConditionEvaluationListener<Ob
     /**
      * Specifies the {@link java.util.concurrent.TimeUnit} to use as unit for elapsed and remaining time.
      *
-     * @param timeUnit The time unit to use.
+     * @param unit The time unit to use.
      */
-    public ConditionEvaluationLogger(TimeUnit timeUnit) {
-        if (timeUnit == null) {
+    public ConditionEvaluationLogger(TimeUnit unit) {
+        if (unit == null) {
             throw new IllegalArgumentException("TimeUnit cannot be null");
         }
-        this.timeUnit = timeUnit;
+        this.unit = unit;
     }
 
     public void conditionEvaluated(EvaluatedCondition<Object> condition) {
         String description = condition.getDescription();
-        long elapsedTime = timeUnit.convert(condition.getElapsedTimeInMS(), MILLISECONDS);
-        long remainingTime = timeUnit.convert(condition.getRemainingTimeInMS(), MILLISECONDS);
-        String timeUnitAsString = timeUnit.toString().toLowerCase();
+        long elapsedTime = unit.convert(condition.getElapsedTimeInMS(), MILLISECONDS);
+        long remainingTime = unit.convert(condition.getRemainingTimeInMS(), MILLISECONDS);
+        String unitAsString = unit.toString().toLowerCase();
         if (condition.isSatisfied()) {
-            System.out.printf("%s after %d %s (remaining time %d %s, last poll interval was %d %s)%n", description, elapsedTime, timeUnitAsString, remainingTime, timeUnitAsString,
-                    condition.getPollInterval().getValue(), condition.getPollInterval().getTimeUnitAsString());
+            System.out.printf("%s after %d %s (remaining time %d %s, last poll interval was %s)%n", description, elapsedTime, unitAsString, remainingTime, unitAsString,
+                    new TemporalDuration(condition.getPollInterval()).toString());
         } else {
-            System.out.printf("%s (elapsed time %d %s, remaining time %d %s (last poll interval was %d %s))%n", description, elapsedTime,
-                    timeUnitAsString, remainingTime, timeUnitAsString, condition.getPollInterval().getValue(),
-                    condition.getPollInterval().getTimeUnitAsString());
+            System.out.printf("%s (elapsed time %d %s, remaining time %d %s (last poll interval was %s))%n", description, elapsedTime,
+                    unitAsString, remainingTime, unitAsString, new TemporalDuration(condition.getPollInterval()).toString());
         }
+    }
+
+    /**
+     * Syntactic sugar to avoid writing the <code>new</code> keyword in Java.
+     * Uses {@link java.util.concurrent.TimeUnit#MILLISECONDS} as unit for elapsed and remaining time.
+     *
+     * @return A new instance of {@link ConditionEvaluationLogger}
+     */
+    public static ConditionEvaluationLogger conditionEvaluationLogger() {
+        return new ConditionEvaluationLogger();
+    }
+
+    /**
+     * Syntactic sugar to avoid writing the <code>new</code> keyword in Java.
+     * Specifies the {@link java.util.concurrent.TimeUnit} to use as unit for elapsed and remaining time.
+     *
+     * @param unit The time unit to use.
+     */
+    public static ConditionEvaluationLogger conditionEvaluationLogger(TimeUnit unit) {
+        return new ConditionEvaluationLogger(unit);
     }
 }

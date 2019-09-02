@@ -16,6 +16,7 @@
 package org.awaitility.core;
 
 import java.util.concurrent.ExecutorService;
+import java.util.function.Consumer;
 
 /**
  * Handles how threads and thread-pools are cleanup after each conditional evaluation round.
@@ -25,28 +26,17 @@ import java.util.concurrent.ExecutorService;
  */
 class EvaluationCleanup {
 
-
     private final Consumer<ExecutorService> normalShutdownBehavior;
     private final Consumer<ExecutorService> unexpectedShutdownBehavior;
 
     /**
-     * @param normalShutdownBehavior The cleanup behavior that is executed when an <code>until</code> method succeeds, fails or times out.
+     * @param normalShutdownBehavior The cleanup behavior that is executed when an <code>until</code> method call succeeds, fails or times out.
      * @param unexpectedShutdownBehavior The cleanup behavior that is executed for unexpected failures.
      *                                   Currently this means when exceptions are thrown from non-test threads ("uncaught exceptions")
      */
-    public EvaluationCleanup(Consumer<ExecutorService> normalShutdownBehavior,
-                             Consumer<ExecutorService> unexpectedShutdownBehavior) {
-
+    EvaluationCleanup(Consumer<ExecutorService> normalShutdownBehavior, Consumer<ExecutorService> unexpectedShutdownBehavior) {
         this.normalShutdownBehavior = normalShutdownBehavior;
         this.unexpectedShutdownBehavior = unexpectedShutdownBehavior;
-    }
-
-    Consumer<ExecutorService> getNormalShutdownBehavior() {
-        return normalShutdownBehavior;
-    }
-
-    Consumer<ExecutorService> getUnexpectedShutdownBehavior() {
-        return unexpectedShutdownBehavior;
     }
 
     void executeNormalCleanupBehavior(ExecutorService executorService) {

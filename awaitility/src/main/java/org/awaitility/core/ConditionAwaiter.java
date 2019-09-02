@@ -15,16 +15,20 @@
  */
 package org.awaitility.core;
 
-import org.awaitility.Duration;
 
-import java.beans.Introspector;
 import java.lang.Thread.UncaughtExceptionHandler;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.time.temporal.ChronoUnit.MILLIS;
+import static java.time.temporal.ChronoUnit.NANOS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.awaitility.classpath.ClassPathResolver.existInCP;
+import static org.awaitility.core.TemporalDuration.formatAsString;
+import static org.awaitility.core.Uninterruptibles.getUninterruptibly;
+import static org.awaitility.core.Uninterruptibles.sleepUninterruptibly;
 
 abstract class ConditionAwaiter implements UncaughtExceptionHandler {
     private final ExecutorService executor;
@@ -51,7 +55,7 @@ abstract class ConditionAwaiter implements UncaughtExceptionHandler {
         this.conditionSettings = conditionSettings;
         this.conditionEvaluator = conditionEvaluator;
         this.executor = conditionSettings.getExecutorLifecycle().supplyExecutorService();
-        this.uncaughtThrowable = new AtomicReference<Throwable>();
+        this.uncaughtThrowable = new AtomicReference<>();
     }
 
     /**
@@ -59,21 +63,18 @@ abstract class ConditionAwaiter implements UncaughtExceptionHandler {
      *
      * @param conditionEvaluationHandler The conditionEvaluationHandler
      */
-    @SuppressWarnings("deprecation")
     public <T> void await(final ConditionEvaluationHandler<T> conditionEvaluationHandler) {
         final Duration pollDelay = conditionSettings.getPollDelay();
         final Duration maxWaitTime = conditionSettings.getMaxWaitTime();
         final Duration minWaitTime = conditionSettings.getMinWaitTime();
 
-        final long maxTimeout = maxWaitTime.getValue();
-        final TimeUnit maxTimeoutUnit = maxWaitTime.getTimeUnit();
-
-        long pollingStartedNanos = System.nanoTime() - pollDelay.getValueInNS();
+        long pollingStartedNanos = System.nanoTime() - pollDelay.toMillis();
 
         int pollCount = 0;
         boolean succeededBeforeTimeout = false;
         ConditionEvaluationResult lastResult = null;
-        Duration evaluationDuration = new Duration(0, MILLISECONDS);
+        Duration evaluationDuration = Duration.of(0, MILLIS);
+        Future<ConditionEvaluationResult> currentConditionEvaluation = null;
         try {
             if (executor.isShutdown() || executor.isTerminated()) {
                 throw new IllegalStateException("The executor service that Awaitility is instructed to use has been shutdown so condition evaluation cannot be performed. Is there something wrong the thread or executor configuration?");
@@ -81,17 +82,21 @@ abstract class ConditionAwaiter implements UncaughtExceptionHandler {
 
             conditionEvaluationHandler.start();
             if (!pollDelay.isZero()) {
-                Thread.sleep(pollDelay.getValueInMS());
+                sleepUninterruptibly(pollDelay.toNanos(), NANOSECONDS);
             }
             Duration pollInterval = pollDelay;
             while (maxWaitTime.compareTo(evaluationDuration) > 0) {
                 pollCount = pollCount + 1;
-                lastResult = executor.submit(new ConditionPoller(pollInterval)).get(maxTimeout, maxTimeoutUnit);
+                // Only wait for the next condition evaluation for at most what's remaining of
+                Duration maxWaitTimeForThisCondition = maxWaitTime.minus(evaluationDuration);
+                currentConditionEvaluation = executor.submit(new ConditionPoller(pollInterval));
+                // Wait for condition evaluation to complete with "maxWaitTimeForThisCondition" or else throw TimeoutException
+                lastResult = ChronoUnit.FOREVER.getDuration().equals(maxWaitTime) ? getUninterruptibly(currentConditionEvaluation) : getUninterruptibly(currentConditionEvaluation, maxWaitTimeForThisCondition);
                 if (lastResult.isSuccessful() || lastResult.hasThrowable()) {
                     break;
                 }
                 pollInterval = conditionSettings.getPollInterval().next(pollCount, pollInterval);
-                Thread.sleep(pollInterval.getValueInMS());
+                sleepUninterruptibly(pollInterval.toNanos(), NANOSECONDS);
                 evaluationDuration = calculateConditionEvaluationDuration(pollDelay, pollingStartedNanos);
             }
             evaluationDuration = calculateConditionEvaluationDuration(pollDelay, pollingStartedNanos);
@@ -102,6 +107,12 @@ abstract class ConditionAwaiter implements UncaughtExceptionHandler {
             lastResult = new ConditionEvaluationResult(false, e.getCause(), null);
         } catch (Throwable e) {
             lastResult = new ConditionEvaluationResult(false, e, null);
+        } finally {
+            if (currentConditionEvaluation != null) {
+                // Cancelling future in order to avoid race-condition with last result for Hamcrest matchers
+                // See https://github.com/awaitility/awaitility/issues/109
+                currentConditionEvaluation.cancel(true);
+            }
         }
 
         try {
@@ -110,13 +121,14 @@ abstract class ConditionAwaiter implements UncaughtExceptionHandler {
             } else if (lastResult != null && lastResult.hasThrowable()) {
                 throw lastResult.getThrowable();
             } else if (!succeededBeforeTimeout) {
-                final String maxWaitTimeLowerCase = maxWaitTime.getTimeUnitAsString();
                 final String message;
+                String timeoutMessage = getTimeoutMessage();
+                String durationAsString = formatAsString(maxWaitTime);
                 if (conditionSettings.hasAlias()) {
-                    message = String.format("Condition with alias '%s' didn't complete within %s %s because %s.",
-                            conditionSettings.getAlias(), maxTimeout, maxWaitTimeLowerCase, Introspector.decapitalize(getTimeoutMessage()));
+                    message = String.format("Condition with alias '%s' didn't complete within %s because %s.",
+                            conditionSettings.getAlias(), durationAsString, decapitalize(timeoutMessage));
                 } else {
-                    message = String.format("%s within %s %s.", getTimeoutMessage(), maxTimeout, maxWaitTimeLowerCase);
+                    message = String.format("%s within %s.", timeoutMessage, durationAsString);
                 }
 
                 Throwable cause = lastResult != null && lastResult.hasTrace() ? lastResult.getTrace() : null;
@@ -135,9 +147,8 @@ abstract class ConditionAwaiter implements UncaughtExceptionHandler {
                 }
                 throw new ConditionTimeoutException(message, cause);
             } else if (evaluationDuration.compareTo(minWaitTime) < 0) {
-                String message = String.format("Condition was evaluated in %s %s which is earlier than expected " +
-                                "minimum timeout %s %s", evaluationDuration.getValue(), evaluationDuration.getTimeUnit(),
-                        minWaitTime.getValue(), minWaitTime.getTimeUnit());
+                String message = String.format("Condition was evaluated in %s which is earlier than expected minimum timeout %s",
+                        formatAsString(evaluationDuration), formatAsString(minWaitTime));
                 throw new ConditionTimeoutException(message);
             }
         } catch (Throwable e) {
@@ -146,6 +157,15 @@ abstract class ConditionAwaiter implements UncaughtExceptionHandler {
             uncaughtThrowable.set(null);
             conditionSettings.getExecutorLifecycle().executeNormalCleanupBehavior(executor);
         }
+    }
+
+    private static String decapitalize(String str) {
+        if (str == null) {
+            return "";
+        }
+        String firstLetter = str.substring(0, 1).toLowerCase();
+        String restLetters = str.substring(1);
+        return firstLetter + restLetters;
     }
 
     /**
@@ -178,19 +198,19 @@ abstract class ConditionAwaiter implements UncaughtExceptionHandler {
         }
 
         @Override
-        public ConditionEvaluationResult call() throws Exception {
+        public ConditionEvaluationResult call() {
             try {
                 return conditionEvaluator.eval(delayed);
             } catch (Throwable e) {
                 if (conditionSettings.shouldExceptionBeIgnored(e)) {
-                    return new ConditionEvaluationResult(false);
+                    return new ConditionEvaluationResult(false, null, e);
                 }
                 return new ConditionEvaluationResult(false, e, null);
             }
         }
     }
 
-    static Duration calculateConditionEvaluationDuration(Duration pollDelay, long pollingStarted) {
-        return new Duration(System.nanoTime() - pollingStarted - pollDelay.getValueInNS(), NANOSECONDS);
+    private static Duration calculateConditionEvaluationDuration(Duration pollDelay, long pollingStarted) {
+        return Duration.of(System.nanoTime() - pollingStarted - pollDelay.toNanos(), NANOS);
     }
 }

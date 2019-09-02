@@ -22,10 +22,13 @@ import org.awaitility.pollinterval.FixedPollInterval;
 import org.awaitility.pollinterval.PollInterval;
 import org.hamcrest.Matcher;
 
+import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
-import static org.awaitility.Duration.ONE_HUNDRED_MILLISECONDS;
+import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 
 /**
  * Awaitility is a small Java DSL for synchronizing (waiting for) asynchronous
@@ -41,7 +44,7 @@ import static org.awaitility.Duration.ONE_HUNDRED_MILLISECONDS;
  * greater than 3.
  * <p/>
  * <pre>
- * await().forever().untilCall(to(orderService).orderCount(), greaterThan(3));
+ * await().forever().until(() -> orderService.orderCount()), greaterThan(3));
  * </pre>
  * <p/>
  * Wait 300 milliseconds until field in object <code>myObject</code> with name
@@ -76,10 +79,10 @@ import static org.awaitility.Duration.ONE_HUNDRED_MILLISECONDS;
  * <p>&nbsp;</p>
  * <ul>
  * <li>org.awaitility.Awaitlity.*</li>
+ * <li>org.awaitility.Durations.*</li>
  * </ul>
  * It may also be useful to import these methods:
  * <ul>
- * <li>org.awaitility.Duration.*</li>
  * <li>java.util.concurrent.TimeUnit.*</li>
  * <li>org.hamcrest.Matchers.*</li>
  * <li>org.junit.Assert.*</li>
@@ -134,11 +137,7 @@ public class Awaitility {
     /**
      * Ignore caught exceptions by default?
      */
-    private static volatile ExceptionIgnorer defaultExceptionIgnorer = new PredicateExceptionIgnorer(new Predicate<Throwable>() {
-        public boolean matches(Throwable e) {
-            return false;
-        }
-    });
+    private static volatile ExceptionIgnorer defaultExceptionIgnorer = new PredicateExceptionIgnorer(e -> false);
 
     /**
      * Default listener of condition evaluation results.
@@ -174,11 +173,7 @@ public class Awaitility {
      * upon an exception, unless it times out.
      */
     public static void ignoreExceptionsByDefault() {
-        defaultExceptionIgnorer = new PredicateExceptionIgnorer(new Predicate<Throwable>() {
-            public boolean matches(Throwable e) {
-                return true;
-            }
-        });
+        defaultExceptionIgnorer = new PredicateExceptionIgnorer(e -> true);
     }
 
     /**
@@ -187,11 +182,7 @@ public class Awaitility {
      * upon an exception matching the supplied exception type, unless it times out.
      */
     public static void ignoreExceptionByDefault(final Class<? extends Throwable> exceptionType) {
-        defaultExceptionIgnorer = new PredicateExceptionIgnorer(new Predicate<Throwable>() {
-            public boolean matches(Throwable e) {
-                return e.getClass().equals(exceptionType);
-            }
-        });
+        defaultExceptionIgnorer = new PredicateExceptionIgnorer(e -> e.getClass().equals(exceptionType));
     }
 
     /**
@@ -229,12 +220,7 @@ public class Awaitility {
      * @since 3.0.0
      */
     public static void pollInSameThread() {
-        defaultExecutorLifecycle = ExecutorLifecycle.withNormalCleanupBehavior(new Supplier<ExecutorService>() {
-            @Override
-            public ExecutorService get() {
-                return InternalExecutorServiceFactory.sameThreadExecutorService();
-            }
-        });
+        defaultExecutorLifecycle = ExecutorLifecycle.withNormalCleanupBehavior(InternalExecutorServiceFactory::sameThreadExecutorService);
     }
 
     /**
@@ -258,12 +244,7 @@ public class Awaitility {
      * @since 3.0.0
      */
     public static void pollThread(final Function<Runnable, Thread> threadSupplier) {
-        defaultExecutorLifecycle = ExecutorLifecycle.withNormalCleanupBehavior(new Supplier<ExecutorService>() {
-            @Override
-            public ExecutorService get() {
-                return InternalExecutorServiceFactory.create(threadSupplier);
-            }
-        });
+        defaultExecutorLifecycle = ExecutorLifecycle.withNormalCleanupBehavior(() -> InternalExecutorServiceFactory.create(threadSupplier));
     }
 
     /**
@@ -286,11 +267,7 @@ public class Awaitility {
         defaultCatchUncaughtExceptions = true;
         defaultConditionEvaluationListener = null;
         defaultExecutorLifecycle = null;
-        defaultExceptionIgnorer = new PredicateExceptionIgnorer(new Predicate<Throwable>() {
-            public boolean matches(Throwable e) {
-                return false;
-            }
-        });
+        defaultExceptionIgnorer = new PredicateExceptionIgnorer(e -> false);
         Thread.setDefaultUncaughtExceptionHandler(null);
     }
 
@@ -395,7 +372,7 @@ public class Awaitility {
      * @return the condition factory
      */
     public static ConditionFactory waitAtMost(long value, TimeUnit unit) {
-        return new ConditionFactory(null, defaultWaitConstraint.withMaxWaitTime(new Duration(value, unit)), defaultPollInterval, defaultPollDelay,
+        return new ConditionFactory(null, defaultWaitConstraint.withMaxWaitTime(DurationFactory.of(value, unit)), defaultPollInterval, defaultPollDelay,
                 defaultCatchUncaughtExceptions, defaultExceptionIgnorer, defaultConditionEvaluationListener,
                 defaultExecutorLifecycle);
     }
@@ -407,7 +384,7 @@ public class Awaitility {
      * @param unit         the unit
      */
     public static void setDefaultPollInterval(long pollInterval, TimeUnit unit) {
-        defaultPollInterval = new FixedPollInterval(new Duration(pollInterval, unit));
+        defaultPollInterval = new FixedPollInterval(DurationFactory.of(pollInterval, unit));
     }
 
     /**
@@ -417,7 +394,7 @@ public class Awaitility {
      * @param unit      the unit
      */
     public static void setDefaultPollDelay(long pollDelay, TimeUnit unit) {
-        defaultPollDelay = new Duration(pollDelay, unit);
+        defaultPollDelay = DurationFactory.of(pollDelay, unit);
     }
 
     /**
@@ -427,7 +404,7 @@ public class Awaitility {
      * @param unit    the unit
      */
     public static void setDefaultTimeout(long timeout, TimeUnit unit) {
-        defaultWaitConstraint = defaultWaitConstraint.withMaxWaitTime(new Duration(timeout, unit));
+        defaultWaitConstraint = defaultWaitConstraint.withMaxWaitTime(DurationFactory.of(timeout, unit));
     }
 
     /**

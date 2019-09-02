@@ -31,11 +31,13 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.concurrent.TimeUnit.*;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 import static org.awaitility.Awaitility.*;
+import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
+import static org.awaitility.Durations.TWO_SECONDS;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
 
@@ -109,6 +111,33 @@ public class AwaitilityJava8Test {
                 () -> assertEquals(1, fakeRepository.getValue()));
     }
 
+    /**
+     * See <a href="https://github.com/awaitility/awaitility/issues/108">issue 108</a>
+     */
+    @Test(timeout = 2000)
+    public void doesntRepeatAliasInLambdaConditionsForAssertConditions() {
+        try {
+            with().pollInterval(10, MILLISECONDS).then().await("my alias").atMost(120, MILLISECONDS).untilAsserted(
+                    () -> assertEquals(1, fakeRepository.getValue()));
+            fail("Should throw ConditionTimeoutException");
+        } catch (ConditionTimeoutException e) {
+            assertThat(countOfOccurrences(e.getMessage(), "my alias")).isEqualTo(1);
+        }
+    }
+
+    /**
+     * See <a href="https://github.com/awaitility/awaitility/issues/108">issue 108</a>
+     */
+    @Test(timeout = 2000)
+    public void doesntRepeatAliasInLambdaConditionsForCallableConditions() {
+        try {
+            with().pollInterval(10, MILLISECONDS).then().await("my alias").atMost(120, MILLISECONDS).until(() -> fakeRepository.getValue() == 1);
+            fail("Should throw ConditionTimeoutException");
+        } catch (ConditionTimeoutException e) {
+            assertThat(countOfOccurrences(e.getMessage(), "my alias")).isEqualTo(1);
+        }
+    }
+
     @Test(timeout = 2000)
     public void lambdaErrorMessageLooksAlrightWhenUsingMethodReferences() {
         exception.expect(ConditionTimeoutException.class);
@@ -148,8 +177,8 @@ public class AwaitilityJava8Test {
     public void conditionResultsCanBeLoggedToSystemOut() {
         with()
                 .conditionEvaluationListener(condition -> System.out.printf("%s (elapsed time %dms, remaining time %dms)\n", condition.getDescription(), condition.getElapsedTimeInMS(), condition.getRemainingTimeInMS()))
-                .pollInterval(Duration.ONE_HUNDRED_MILLISECONDS)
-                .atMost(Duration.TWO_SECONDS)
+                .pollInterval(ONE_HUNDRED_MILLISECONDS)
+                .atMost(TWO_SECONDS)
                 .until(new CountDown(5), anyOf(is(0), lessThan(0)));
     }
 
@@ -157,8 +186,8 @@ public class AwaitilityJava8Test {
     public void loggingIntermediaryHandlerLogsToSystemOut() {
         with()
                 .conditionEvaluationListener(new ConditionEvaluationLogger(SECONDS))
-                .pollInterval(Duration.ONE_HUNDRED_MILLISECONDS)
-                .atMost(Duration.TWO_SECONDS)
+                .pollInterval(ONE_HUNDRED_MILLISECONDS)
+                .atMost(TWO_SECONDS)
                 .until(new CountDown(5), is(equalTo(0)));
     }
 
@@ -167,7 +196,7 @@ public class AwaitilityJava8Test {
         await().untilAsserted(() -> stringEquals("test", "test"));
     }
 
-    @SuppressWarnings("ConstantConditions")
+    @SuppressWarnings("ObviousNullCheck")
     @Test(timeout = 2000L)
     public void includesCauseInStackTrace()  {
         try {
@@ -185,7 +214,7 @@ public class AwaitilityJava8Test {
     @Test(timeout = 2000L)
     public void throwsExceptionImmediatelyWhenCallableConditionThrowsAssertionError() throws Exception {
         // Given
-        long timeStart = System.currentTimeMillis();
+        long timeStart = System.nanoTime();
         new Asynch(fakeRepository).perform();
 
         // When
@@ -202,8 +231,8 @@ public class AwaitilityJava8Test {
         }
 
         // Then
-        long timeEnd = System.currentTimeMillis();
-        assertThat(timeEnd - timeStart).isLessThan(1500L);
+        long timeEnd = System.nanoTime();
+        assertThat(NANOSECONDS.toMillis(timeEnd - timeStart)).isLessThan(1500L);
     }
 
     // Asserts that https://github.com/awaitility/awaitility/issues/87 is resolved
@@ -229,9 +258,25 @@ public class AwaitilityJava8Test {
 
     }
 
+    // Asserts that https://github.com/awaitility/awaitility/issues/97 is resolved
+    @Test(timeout = 2000L)
+    public void longConditionThrowsConditionTimeoutException() throws Exception {
+        exception.expect(ConditionTimeoutException.class);
+        exception.expectMessage("Condition with org.awaitility.AwaitilityJava8Test was not fulfilled within 50 milliseconds.");
+
+        given().pollDelay(10, MILLISECONDS).await().atMost(50, MILLISECONDS).until(() -> {
+            Thread.sleep(1000);
+            return false;
+        });
+    }
+
     private void stringEquals(String first, String second) {
         Assertions.assertThat(first).isEqualTo(second);
     }
 
 
+
+    private static int countOfOccurrences(String str, String subStr) {
+        return (str.length() - str.replaceAll(Pattern.quote(subStr), "").length()) / subStr.length();
+    }
 }

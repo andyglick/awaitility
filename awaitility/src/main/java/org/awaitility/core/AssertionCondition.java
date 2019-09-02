@@ -15,7 +15,6 @@
  */
 package org.awaitility.core;
 
-import org.awaitility.Duration;
 
 import java.lang.reflect.Method;
 
@@ -49,47 +48,45 @@ public class AssertionCondition implements Condition<Void> {
 
         conditionEvaluationHandler = new ConditionEvaluationHandler<Object>(null, settings);
 
-        final ConditionEvaluator callable = new ConditionEvaluator() {
-            public ConditionEvaluationResult eval(Duration pollInterval) throws Exception {
-                try {
-                    supplier.run();
-                    conditionEvaluationHandler.handleConditionResultMatch(getMatchMessage(supplier, settings.getAlias()), null, pollInterval);
-                    return new ConditionEvaluationResult(true);
-                } catch (AssertionError e) {
-                    lastExceptionMessage = e.getMessage();
-                    conditionEvaluationHandler.handleConditionResultMismatch(getMismatchMessage(supplier, lastExceptionMessage, settings.getAlias()), null, pollInterval);
-                    return new ConditionEvaluationResult(false, null, e);
-                } catch (Throwable throwable) {
-                    return CheckedExceptionRethrower.safeRethrow(throwable);
-                }
+        final ConditionEvaluator callable = pollInterval -> {
+            try {
+                supplier.run();
+                conditionEvaluationHandler.handleConditionResultMatch(getMatchMessage(supplier, settings.getAlias()), null, pollInterval);
+                return new ConditionEvaluationResult(true);
+            } catch (AssertionError e) {
+                lastExceptionMessage = e.getMessage();
+                conditionEvaluationHandler.handleConditionResultMismatch(getMismatchMessage(supplier, lastExceptionMessage, settings.getAlias(), true), null, pollInterval);
+                return new ConditionEvaluationResult(false, null, e);
+            } catch (Throwable throwable) {
+                return CheckedExceptionRethrower.safeRethrow(throwable);
             }
         };
         conditionAwaiter = new ConditionAwaiter(callable, settings) {
             @Override
             protected String getTimeoutMessage() {
-                return getMismatchMessage(supplier, lastExceptionMessage, settings.getAlias());
+                return getMismatchMessage(supplier, lastExceptionMessage, settings.getAlias(), false);
             }
         };
     }
 
     private String getMatchMessage(ThrowingRunnable supplier, String conditionAlias) {
-        return generateDescriptionPrefix(supplier, conditionAlias) + " reached its end value";
+        return generateDescriptionPrefix(supplier, conditionAlias, true) + " reached its end value";
     }
 
-    private String getMismatchMessage(ThrowingRunnable supplier, String exceptionMessage, String conditionAlias) {
+    private String getMismatchMessage(ThrowingRunnable supplier, String exceptionMessage, String conditionAlias, boolean includeAliasIfDefined) {
         if (exceptionMessage != null && exceptionMessage.endsWith(".")) {
             // Remove the "." of the Hamcrest match description since Awaitility adds more
             exceptionMessage = exceptionMessage.substring(0, exceptionMessage.length() - 1);
         }
-        return generateDescriptionPrefix(supplier, conditionAlias) + " " + exceptionMessage;
+        return generateDescriptionPrefix(supplier, conditionAlias, includeAliasIfDefined) + " " + exceptionMessage;
     }
 
-    private String generateDescriptionPrefix(ThrowingRunnable supplier, String conditionAlias) {
+    private String generateDescriptionPrefix(ThrowingRunnable supplier, String conditionAlias, boolean includeAliasIfDefined) {
         String methodDescription = generateMethodDescription(supplier);
         boolean hasAlias = conditionAlias != null;
         if (isLambdaClass(supplier.getClass())) {
             final String prefix;
-            if (hasAlias) {
+            if (hasAlias && includeAliasIfDefined) {
                 prefix = "Assertion condition with alias " + conditionAlias + " defined as a ";
             } else {
                 prefix = "Assertion condition defined as a ";

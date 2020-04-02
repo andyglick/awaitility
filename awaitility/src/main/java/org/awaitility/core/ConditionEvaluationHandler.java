@@ -44,7 +44,7 @@ class ConditionEvaluationHandler<T> {
             long elapsedTimeInMS = watch.getElapsedTimeInMS();
             long remainingTimeInMS = getRemainingTimeInMS(elapsedTimeInMS, settings.getMaxWaitTime());
             try {
-                listener.conditionEvaluated(new EvaluatedCondition<T>(mismatchMessage, matcher, currentConditionValue, elapsedTimeInMS,
+                listener.conditionEvaluated(new EvaluatedCondition<>(mismatchMessage, matcher, currentConditionValue, elapsedTimeInMS,
                         remainingTimeInMS, false, settings.getAlias(), pollInterval));
             } catch (ClassCastException e) {
                 throwClassCastExceptionBecauseConditionEvaluationListenerCouldNotBeApplied(e, listener);
@@ -57,7 +57,7 @@ class ConditionEvaluationHandler<T> {
             long elapsedTimeInMS = watch.getElapsedTimeInMS();
             long remainingTimeInMS = getRemainingTimeInMS(elapsedTimeInMS, settings.getMaxWaitTime());
             try {
-                listener.conditionEvaluated(new EvaluatedCondition<T>(matchMessage, matcher, currentConditionValue, elapsedTimeInMS,
+                listener.conditionEvaluated(new EvaluatedCondition<>(matchMessage, matcher, currentConditionValue, elapsedTimeInMS,
                         remainingTimeInMS, true, settings.getAlias(), pollInterval));
             } catch (ClassCastException e) {
                 throwClassCastExceptionBecauseConditionEvaluationListenerCouldNotBeApplied(e, listener);
@@ -83,7 +83,35 @@ class ConditionEvaluationHandler<T> {
     }
 
     public void start() {
+
+        ConditionEvaluationListener<T> listener = settings.getConditionEvaluationListener();
+        if (listener != null) {
+            long elapsedTimeInMS = 0L;
+            long remainingTimeInMS = getRemainingTimeInMS(0, settings.getMaxWaitTime());
+
+            listener.beforeEvaluation(new StartEvaluationEvent<>("Starting evaluation", matcher, elapsedTimeInMS,
+                    remainingTimeInMS, settings.getAlias()));
+        }
         watch.start();
+    }
+
+    public void handleTimeout(String message, boolean isConditionSatisfied) {
+        ConditionEvaluationListener<T> listener = settings.getConditionEvaluationListener();
+        if (listener != null) {
+            long elapsedTimeInMS = watch.getElapsedTimeInMS();
+            long remainingTimeInMS = getRemainingTimeInMS(elapsedTimeInMS, settings.getMaxWaitTime());
+            listener.onTimeout(new TimeoutEvent(message, elapsedTimeInMS, remainingTimeInMS,
+                    isConditionSatisfied, settings.getAlias()));
+        }
+    }
+
+    public void handleIgnoredException(Throwable throwable) {
+        ConditionEvaluationListener<T> listener = settings.getConditionEvaluationListener();
+        if (listener != null) {
+            long elapsedTimeInMS = watch.getElapsedTimeInMS();
+            long remainingTimeInMS = getRemainingTimeInMS(elapsedTimeInMS, settings.getMaxWaitTime());
+            listener.exceptionIgnored(new IgnoredException(throwable, elapsedTimeInMS, remainingTimeInMS, settings.getAlias()));
+        }
     }
 
     private static class StopWatch {

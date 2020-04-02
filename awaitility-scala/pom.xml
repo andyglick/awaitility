@@ -19,14 +19,14 @@
     <parent>
         <groupId>org.awaitility</groupId>
         <artifactId>awaitility-parent</artifactId>
-        <version>4.0.1-SNAPSHOT</version>
+        <version>4.0.3-SNAPSHOT</version>
     </parent>
     <artifactId>awaitility-scala</artifactId>
     <name>Awaitility support for Scala</name>
     <description>Simplifies Awaitility usage from Scala</description>
 
     <properties>
-        <scala.version>2.13.0</scala.version>
+        <scala.version>2.13.1</scala.version>
     </properties>
 
     <dependencies>
@@ -55,7 +55,7 @@
             <plugin>
                 <groupId>net.alchim31.maven</groupId>
                 <artifactId>scala-maven-plugin</artifactId>
-                <version>4.1.0</version>
+                <version>4.3.0</version>
                 <executions>
                     <execution>
                         <id>attach-javadocs</id>

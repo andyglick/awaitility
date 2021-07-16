@@ -23,6 +23,7 @@ import org.awaitility.pollinterval.PollInterval;
 import org.hamcrest.Matcher;
 
 import java.time.Duration;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -150,6 +151,11 @@ public class Awaitility {
     private static volatile ExecutorLifecycle defaultExecutorLifecycle = null;
 
     /**
+     * If this condition if _ever_ false, indicates our condition will _never_ be true.
+     */
+    private static volatile FailFastCondition defaultFailFastCondition = null;
+
+    /**
      * Instruct Awaitility to catch uncaught exceptions from other threads by
      * default. This is useful in multi-threaded systems when you want your test
      * to fail regardless of which thread throwing the exception. Default is
@@ -209,13 +215,13 @@ public class Awaitility {
      * wait forever (or a long time) since Awaitility cannot interrupt the thread when using the same
      * thread as the test. For safety you should always combine tests using this feature with a test framework specific timeout,
      * for example in JUnit:
-     *<pre>
+     * <pre>
      * @Test(timeout = 2000L)
      * public void myTest() {
      *     Awaitility.pollInSameThread();
      *     await().forever().until(...);
      * }
-     *</pre>
+     * </pre>
      *
      * @since 3.0.0
      */
@@ -258,6 +264,7 @@ public class Awaitility {
      * <li>Catch all uncaught exceptions - true</li>
      * <li>Do not ignore caught exceptions</li>
      * <li>Don't handle condition evaluation results</li>
+     * <li>No fail fast condition</li>
      * </ul>
      */
     public static void reset() {
@@ -268,6 +275,7 @@ public class Awaitility {
         defaultConditionEvaluationListener = null;
         defaultExecutorLifecycle = null;
         defaultExceptionIgnorer = new PredicateExceptionIgnorer(e -> false);
+        defaultFailFastCondition = null;
         Thread.setDefaultUncaughtExceptionHandler(null);
     }
 
@@ -292,7 +300,7 @@ public class Awaitility {
     public static ConditionFactory await(String alias) {
         return new ConditionFactory(alias, defaultWaitConstraint, defaultPollInterval, defaultPollDelay,
                 defaultCatchUncaughtExceptions, defaultExceptionIgnorer, defaultConditionEvaluationListener,
-                defaultExecutorLifecycle);
+                defaultExecutorLifecycle, defaultFailFastCondition);
     }
 
     /**
@@ -305,7 +313,7 @@ public class Awaitility {
     public static ConditionFactory catchUncaughtExceptions() {
         return new ConditionFactory(null, defaultWaitConstraint, defaultPollInterval, defaultPollDelay,
                 defaultCatchUncaughtExceptions, defaultExceptionIgnorer, defaultConditionEvaluationListener,
-                defaultExecutorLifecycle);
+                defaultExecutorLifecycle, defaultFailFastCondition);
     }
 
     /**
@@ -317,7 +325,7 @@ public class Awaitility {
     public static ConditionFactory dontCatchUncaughtExceptions() {
         return new ConditionFactory(null, defaultWaitConstraint, defaultPollInterval, defaultPollDelay,
                 false, defaultExceptionIgnorer, defaultConditionEvaluationListener,
-                defaultExecutorLifecycle);
+                defaultExecutorLifecycle, defaultFailFastCondition);
     }
 
     /**
@@ -332,7 +340,7 @@ public class Awaitility {
     public static ConditionFactory with() {
         return new ConditionFactory(null, defaultWaitConstraint, defaultPollInterval, defaultPollDelay,
                 defaultCatchUncaughtExceptions, defaultExceptionIgnorer, defaultConditionEvaluationListener,
-                defaultExecutorLifecycle);
+                defaultExecutorLifecycle, defaultFailFastCondition);
     }
 
     /**
@@ -347,7 +355,7 @@ public class Awaitility {
     public static ConditionFactory given() {
         return new ConditionFactory(null, defaultWaitConstraint, defaultPollInterval, defaultPollDelay,
                 defaultCatchUncaughtExceptions, defaultExceptionIgnorer, defaultConditionEvaluationListener,
-                defaultExecutorLifecycle);
+                defaultExecutorLifecycle, defaultFailFastCondition);
     }
 
     /**
@@ -360,7 +368,7 @@ public class Awaitility {
     public static ConditionFactory waitAtMost(Duration timeout) {
         return new ConditionFactory(null, defaultWaitConstraint.withMaxWaitTime(timeout), defaultPollInterval, defaultPollDelay,
                 defaultCatchUncaughtExceptions, defaultExceptionIgnorer, defaultConditionEvaluationListener,
-                defaultExecutorLifecycle);
+                defaultExecutorLifecycle, defaultFailFastCondition);
     }
 
     /**
@@ -374,7 +382,7 @@ public class Awaitility {
     public static ConditionFactory waitAtMost(long value, TimeUnit unit) {
         return new ConditionFactory(null, defaultWaitConstraint.withMaxWaitTime(DurationFactory.of(value, unit)), defaultPollInterval, defaultPollDelay,
                 defaultCatchUncaughtExceptions, defaultExceptionIgnorer, defaultConditionEvaluationListener,
-                defaultExecutorLifecycle);
+                defaultExecutorLifecycle, defaultFailFastCondition);
     }
 
     /**
@@ -462,6 +470,29 @@ public class Awaitility {
      */
     public static void setDefaultConditionEvaluationListener(ConditionEvaluationListener defaultConditionEvaluationListener) {
         Awaitility.defaultConditionEvaluationListener = defaultConditionEvaluationListener;
+    }
+
+    /**
+     * If the supplied Callable <i>ever</i> returns false, it indicates our condition will <i>never</i> be true, and if so fail the system immediately.
+     * Throws a {@link TerminalFailureException} if fail fast condition evaluates to <code>true</code>. If you want to specify a more descriptive error message
+     * then use {@link #setDefaultFailFastCondition(String, Callable)}.
+     *
+     * @param defaultFailFastCondition The terminal failure condition
+     * @see #setDefaultFailFastCondition(String, Callable)
+     */
+    public static void setDefaultFailFastCondition(Callable<Boolean> defaultFailFastCondition) {
+        Awaitility.defaultFailFastCondition = new FailFastCondition(null, defaultFailFastCondition);
+    }
+
+    /**
+     * If the supplied Callable <i>ever</i> returns false, it indicates our condition will <i>never</i> be true, and if so fail the system immediately.
+     * Throws a {@link TerminalFailureException} if fail fast condition evaluates to <code>true</code>.
+     *
+     * @param defaultFailFastCondition The terminal failure condition
+     * @param failFastFailureReason    A descriptive reason why the fail fast condition has failed, will be included in the {@link TerminalFailureException} thrown if <code>failFastCondition</code> evaluates to <code>true</code>.
+     */
+    public static void setDefaultFailFastCondition(String failFastFailureReason, Callable<Boolean> defaultFailFastCondition) {
+        Awaitility.defaultFailFastCondition = new FailFastCondition(failFastFailureReason, defaultFailFastCondition);
     }
 
     /**
